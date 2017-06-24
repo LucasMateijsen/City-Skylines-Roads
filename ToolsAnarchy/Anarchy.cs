@@ -1,8 +1,10 @@
-﻿using ColossalFramework;
+using ColossalFramework;
+using ColossalFramework.Plugins;
 using ICities;
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -34,6 +36,18 @@ namespace ToolsAnarchy
 
     public class Anarchy : MonoBehaviour
     {
+        private void dumpObject(string message, object myObject)
+        {
+            string myObjectDetails = "";
+            foreach (PropertyDescriptor descriptor in TypeDescriptor.GetProperties(myObject))
+            {
+                string name = descriptor.Name;
+                object value = descriptor.GetValue(myObject);
+                myObjectDetails += name + ": " + value + "\n";
+            }
+            DebugOutputPanel.AddMessage(PluginManager.MessageType.Message, $"{message}: {myObjectDetails}");
+        }
+
         private bool hookEnabled = false;        
         private Dictionary<MethodInfo, RedirectCallsState> redirects = new Dictionary<MethodInfo, RedirectCallsState>();
 
@@ -58,38 +72,58 @@ namespace ToolsAnarchy
                 return;
             }
             var allFlags = BindingFlags.Instance | BindingFlags.Static | BindingFlags.NonPublic | BindingFlags.Public;
-            var method = typeof(NetTool).GetMethods(allFlags).Single(c => c.Name == "CanCreateSegment" && c.GetParameters().Length == 11);
+
+            //DebugOutputPanel.AddMessage(PluginManager.MessageType.Message, "Logging Methods");
+            //typeof(NetTool).GetMethods(allFlags).OrderBy(x => x.Name).ToList().ForEach(x => DebugOutputPanel.AddMessage(PluginManager.MessageType.Message, x.Name));
+            //typeof(NetTool).GetMethods(allFlags).Where(x => x.Name == "CheckZoning").ToList().ForEach(x =>
+            //{
+            //    DebugOutputPanel.AddMessage(PluginManager.MessageType.Message, "#####");
+            //    DebugOutputPanel.AddMessage(PluginManager.MessageType.Message, "Name: " + x.Name);
+            //    x.GetParameters().ToList().ForEach(y => dumpObject("param", y));
+            //    DebugOutputPanel.AddMessage(PluginManager.MessageType.Message, "found: " + x.GetParameters().Length);
+            //    DebugOutputPanel.AddMessage(PluginManager.MessageType.Message, "#####");
+            //});
+            //DebugOutputPanel.AddMessage(PluginManager.MessageType.Message, "Logging Methods END");
+
+            var method = typeof(NetTool).GetMethods(allFlags).FirstOrDefault(c => c.Name == "CanCreateSegment" && c.GetParameters().Length == 12);
+            //dumpObject("CanCreateSegment", method);
             redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("CanCreateSegment", allFlags)));
 
             method = typeof(NetTool).GetMethod("CheckNodeHeights", allFlags);
+            //dumpObject("CheckNodeHeights", method);
             redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("CheckNodeHeights", allFlags)));
 
             method = typeof(NetTool).GetMethod("CheckCollidingSegments", allFlags);
+            //dumpObject("CheckCollidingSegments", method);
             redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("CheckCollidingSegments", allFlags)));
 
             method = typeof(BuildingTool).GetMethod("CheckCollidingBuildings", allFlags);
+            //dumpObject("CheckCollidingBuildings", method);
             redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("CheckCollidingBuildings", allFlags)));
 
             method = typeof(BuildingTool).GetMethod("CheckSpace", allFlags);
+            //dumpObject("CheckSpace", method);
             redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("CheckSpace", allFlags)));
 
-            method = typeof(Building).GetMethods(allFlags).Single(c => c.Name == "CheckZoning" && c.GetParameters().Length == 1);
-            redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("CheckZoning", allFlags)));
-
             method = typeof(NetTool).GetMethod("GetElevation", allFlags);
+            //dumpObject("GetElevation", method);
             redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("GetElevation", allFlags)));
 
 
             method = typeof(RoadAI).GetMethod("GetElevationLimits", allFlags);
+            //dumpObject("GetElevationLimits", method);
             redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("GetElevationLimits", allFlags)));
 
             method = typeof(TrainTrackAI).GetMethod("GetElevationLimits", allFlags);
+            //dumpObject("GetElevationLimits", method);
             redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("GetElevationLimits", allFlags)));
 
             method = typeof(PedestrianPathAI).GetMethod("GetElevationLimits", allFlags);
+            //dumpObject("GetElevationLimits", method);
             redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("GetElevationLimits", allFlags)));
 
             method = typeof(NetAI).GetMethod("BuildUnderground", allFlags);
+            //dumpObject("BuildUnderground", method);
             redirects.Add(method, RedirectionHelper.RedirectCalls(method, typeof(Anarchy).GetMethod("BuildUnderground", allFlags)));
 
 
@@ -112,7 +146,7 @@ namespace ToolsAnarchy
             hookEnabled = false;
         }
 
-        private static ToolBase.ToolErrors CanCreateSegment(NetInfo segmentInfo, ushort startNode, ushort startSegment, ushort endNode, ushort endSegment, ushort upgrading, Vector3 startPos, Vector3 endPos, Vector3 startDir, Vector3 endDir, ulong[] collidingSegmentBuffer)
+        private static ToolBase.ToolErrors CanCreateSegment(NetInfo segmentInfo, ushort startNode, ushort startSegment, ushort endNode, ushort endSegment, ushort upgrading, Vector3 startPos, Vector3 endPos, Vector3 startDir, Vector3 endDir, ulong[] collidingSegmentBuffer, bool testEnds)
         {
             return ToolBase.ToolErrors.None;
         }
@@ -134,11 +168,6 @@ namespace ToolsAnarchy
             return ToolBase.ToolErrors.None;
         }
 
-        public bool CheckZoning(ItemClass.Zone zone)
-        {
-            return true;
-        }
-
         private float GetElevation(NetInfo info)
         {
             var ele = (NetTool)ToolManager.instance.m_properties.CurrentTool;
@@ -156,9 +185,5 @@ namespace ToolsAnarchy
             min = -10;
             max = 64;
         }
-
     }
-
-
-
 }
